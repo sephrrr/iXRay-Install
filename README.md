@@ -13,6 +13,7 @@ Afterwards the `ixray` command manages the panel:
 
 | Command | What it does |
 | --- | --- |
+| `ixray key` | One-time key for creating the owner or resetting its password |
 | `ixray status` | Containers and the dashboard address |
 | `ixray logs -f` | Follow the panel log |
 | `ixray update [version]` | Back up, download the new version, start it |

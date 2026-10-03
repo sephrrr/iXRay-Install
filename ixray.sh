@@ -4,7 +4,7 @@
 #   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/sephrrr/iXRay-Install/main/ixray.sh)" @ install
 #
 # After the install the same script is available as `ixray`:
-#   ixray status | logs | restart | update [version] | backup | restore <file>
+#   ixray key | status | logs | restart | update [version] | backup | restore <file>
 #   ixray domain <name> | path [new-path] | login | uninstall [--purge]
 #
 # Nodes are added from the dashboard (Nodes -> Install node), which hands out a
@@ -16,6 +16,7 @@ SELF_URL=https://raw.githubusercontent.com/sephrrr/iXRay-Install/main/ixray.sh
 DIR=/opt/ixray/panel
 BACKUPS=/opt/ixray/backups
 BIN=/usr/local/bin/ixray
+CLI=/usr/local/bin/ixray-cli
 
 bold=$'\033[1m'; dim=$'\033[2m'; red=$'\033[31m'; green=$'\033[32m'; off=$'\033[0m'
 say() { printf '\n%s==>%s %s%s%s\n' "$green" "$off" "$bold" "$*" "$off"; }
@@ -202,7 +203,9 @@ ENV
 
   show_address
   note ""
-  note "Open it and create the owner account (first visit only)."
+  note "Open it and create the owner account with this one-time key"
+  note "(valid for five minutes; a new one: ixray key):"
+  cmd_key || note "could not create a key now; run: ixray key"
   note "Keep this address: the dashboard answers nowhere else."
   note "Manage the panel with: ixray status | logs | update | backup"
 }
@@ -212,6 +215,18 @@ install_self() {
     install -m 0755 "$BIN.new" "$BIN"
   fi
   rm -f "$BIN.new"
+  # The panel's own CLI lives in the container; this makes it a host command,
+  # as the dashboard's setup page words it (ixray-cli generate-temp-key).
+  cat >"$CLI" <<CLI
+#!/usr/bin/env bash
+cd $DIR && exec docker compose exec -T panel ixray-cli "\$@"
+CLI
+  chmod 0755 "$CLI"
+}
+
+cmd_key() {
+  need_root; need_install
+  compose exec -T panel ixray-cli generate-temp-key
 }
 
 cmd_update() {
@@ -294,6 +309,7 @@ usage() {
 ${bold}ixray${off}: manage the iXRay panel on this server
 
   install [version]    set the panel up (asks for the domain and a registry token)
+  key                  one-time key to create the owner account or reset its password
   status               containers and the dashboard address
   logs [-f]            panel log
   restart              restart the panel (after editing $DIR/.env)
@@ -312,6 +328,8 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   install) cmd_install "$@" ;;
   update) cmd_update "$@" ;;
+  key) cmd_key ;;
+  self-update) need_root; install_self; note "ixray command updated" ;;
   status) need_install; compose ps; show_address ;;
   logs) need_install; compose logs --tail 200 "$@" panel ;;
   restart) need_root; need_install; compose up -d; compose restart panel; wait_healthy ;;
