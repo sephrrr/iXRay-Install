@@ -256,13 +256,22 @@ cmd_backup() {
 cmd_restore() {
   need_root; need_install
   local file="${1:-}" answer
-  [[ -f $file ]] || die "usage: ixray restore <backup.sql.gz>"
+  [[ -f $file ]] || die "usage: ixray restore <backup>   (.dump from the panel or Telegram, or .sql.gz from ixray backup)"
   printf '%sThis replaces the current database with %s.%s\n' "$red" "$file" "$off"
   ask answer "Type 'restore' to continue"
   [[ $answer == restore ]] || die "cancelled"
   cmd_backup
   compose stop panel
-  gunzip -c "$file" | compose exec -T postgres psql -q -U ixray -d ixray >/dev/null
+  if [[ $(head -c 5 "$file") == PGDMP ]]; then
+    # A dump the panel made itself (the Backups page, or the file it sends to Telegram).
+    # Emptied first: a table added by a newer version and missing from an older
+    # dump would otherwise stay behind and trip the migrations on start.
+    compose exec -T postgres psql -q -U ixray -d ixray -c "drop schema public cascade" -c "create schema public" >/dev/null \
+      && compose exec -T postgres pg_restore -U ixray -d ixray --no-owner --no-privileges <"$file" \
+      || die "the backup could not be loaded; the database from before is in $BACKUPS"
+  else
+    gunzip -c "$file" | compose exec -T postgres psql -q -U ixray -d ixray >/dev/null
+  fi
   compose up -d
   wait_healthy
 }
@@ -315,7 +324,7 @@ ${bold}ixray${off}: manage the iXRay panel on this server
   restart              restart the panel (after editing $DIR/.env)
   update [version]     back up, download the new version and start it
   backup               dump the database to $BACKUPS
-  restore <file>       load a backup (asks first)
+  restore <file>       load a backup: a .dump from the panel or Telegram, or a .sql.gz (asks first)
   domain <name>        move the panel to another domain
   path [new-path]      change the secret dashboard address (random if omitted)
   login                sign in to the image registry again
