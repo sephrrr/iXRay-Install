@@ -20,4 +20,5 @@ Afterwards the `ixray` command manages the panel:
 | `ixray backup` / `ixray restore <file>` | Database dump and restore |
 | `ixray path [new]` | Change the secret dashboard address |
 | `ixray domain <name>` | Move the panel to another domain |
+| `ixray extra-domains a.tld b.tld` | More domains the panel also answers on; no names clears |
 | `ixray uninstall [--purge]` | Remove the containers (`--purge` also deletes the data) |

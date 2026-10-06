@@ -5,7 +5,7 @@
 #
 # After the install the same script is available as `ixray`:
 #   ixray key | status | logs | restart | update [version] | backup | restore <file>
-#   ixray domain <name> | path [new-path] | login | uninstall [--purge]
+#   ixray domain <name> | extra-domains [a b] | path [new-path] | login | uninstall [--purge]
 #
 # Nodes are added from the dashboard (Nodes -> Install node), which hands out a
 # one-line command for the node server.
@@ -91,6 +91,7 @@ services:
       - "443:443/udp"
     environment:
       PANEL_DOMAIN: ${PANEL_DOMAIN:?set PANEL_DOMAIN in .env}
+      PANEL_EXTRA_DOMAINS: ${PANEL_EXTRA_DOMAINS:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - panel-sock:/run/ixray
@@ -107,7 +108,9 @@ volumes:
   caddy-config:
 YAML
   cat >"$DIR/Caddyfile" <<'CADDY'
-{$PANEL_DOMAIN} {
+# Every name here gets its own certificate; users' subscription links work on
+# whichever of them they were made with.
+{$PANEL_DOMAIN} {$PANEL_EXTRA_DOMAINS} {
 	encode zstd gzip
 	# The bare domain answers with nothing useful: it sends the browser to a name
 	# that does not exist, so the panel is not advertised to whoever opens it.
@@ -284,6 +287,20 @@ cmd_domain() {
   show_address
 }
 
+cmd_extra_domains() {
+  need_root; need_install
+  local names=""
+  for n in "$@"; do
+    [[ $n =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "not a domain name: $n"
+    names="${names:+$names }$n"
+  done
+  set_setting PANEL_EXTRA_DOMAINS "$names"
+  write_stack
+  compose up -d caddy
+  if [[ -n $names ]]; then note "also answering on: $names"; else note "extra domains cleared"; fi
+  note "each name must point at this server; its certificate is issued on the first visit"
+}
+
 cmd_path() {
   need_root; need_install
   local path="${1:-$(rand 20)}"
@@ -326,6 +343,7 @@ ${bold}ixray${off}: manage the iXRay panel on this server
   backup               dump the database to $BACKUPS
   restore <file>       load a backup: a .dump from the panel or Telegram, or a .sql.gz (asks first)
   domain <name>        move the panel to another domain
+  extra-domains [a b]  more domains the panel also answers on (none = clear)
   path [new-path]      change the secret dashboard address (random if omitted)
   login                sign in to the image registry again
   uninstall [--purge]  remove the containers (--purge also deletes all data)
@@ -345,6 +363,7 @@ case "$cmd" in
   backup) cmd_backup ;;
   restore) cmd_restore "$@" ;;
   domain) cmd_domain "$@" ;;
+  extra-domains) cmd_extra_domains "$@" ;;
   path) cmd_path "$@" ;;
   login) need_root; registry_login ;;
   uninstall) cmd_uninstall "$@" ;;
